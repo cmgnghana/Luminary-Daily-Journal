@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { User, JournalEntry, FeedbackMessage, AppTab, AuthMode } from './types';
 import { NAV_TABS } from './constants/navigation';
 import { getLocalDateString } from './utils/date';
-import { supabase } from './lib/supabase';
+import { supabase, isSupabaseConfigured, supabaseConfigError } from './lib/supabase';
 import { BrandHeader, SiteFooter } from './components/LayoutChrome';
 import { LandingPage } from './components/LandingPage';
 
@@ -103,9 +103,17 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState<boolean>(true);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('luminary_theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    try {
+      const saved = localStorage.getItem('luminary_theme');
+      if (saved) return saved === 'dark';
+    } catch {
+      // Ignore storage access errors in restricted contexts
+    }
+    try {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch {
+      return false;
+    }
   });
 
   // Auth form state
@@ -113,7 +121,7 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
-  const [authError, setAuthError] = useState('');
+  const [authError, setAuthError] = useState(() => (!isSupabaseConfigured ? supabaseConfigError || '' : ''));
   const [authNotice, setAuthNotice] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -211,10 +219,18 @@ export default function App() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('luminary_theme', 'dark');
+      try {
+        localStorage.setItem('luminary_theme', 'dark');
+      } catch {
+        // Ignore storage write errors
+      }
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('luminary_theme', 'light');
+      try {
+        localStorage.setItem('luminary_theme', 'light');
+      } catch {
+        // Ignore storage write errors
+      }
     }
   }, [darkMode]);
 
@@ -232,11 +248,16 @@ export default function App() {
 
   // Session check & auth listener via Supabase Auth
   useEffect(() => {
+    if (!supabase) {
+      setLoadingSession(false);
+      return;
+    }
+    const client = supabase;
     let active = true;
 
     async function initSession() {
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await client.auth.getSession();
         if (!active) return;
         if (error) {
           console.error('Supabase session check failed:', error.message);
@@ -256,7 +277,7 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = client.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       if (session?.user) {
         setToken(session.access_token);
@@ -274,7 +295,9 @@ export default function App() {
   }, []);
 
   function handleSessionExpired() {
-    void supabase.auth.signOut();
+    if (supabase) {
+      void supabase.auth.signOut();
+    }
     setToken(null);
     setUser(null);
     setJournals([]);
@@ -296,6 +319,7 @@ export default function App() {
   }
 
   async function fetchJournals() {
+    if (!supabase) return;
     setJournalsLoading(true);
     try {
       const { data, error } = await supabase
@@ -325,7 +349,7 @@ export default function App() {
 
   function handleChangeAuthMode(mode: AuthMode) {
     setAuthMode(mode);
-    setAuthError('');
+    setAuthError(!isSupabaseConfigured ? supabaseConfigError || '' : '');
     setAuthNotice('');
     setRouteHash(`#/${mode}`);
   }
@@ -334,6 +358,15 @@ export default function App() {
     e.preventDefault();
     setAuthError('');
     setAuthNotice('');
+
+    if (!supabase) {
+      setAuthError(
+        supabaseConfigError ||
+          'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY and redeploy.'
+      );
+      return;
+    }
+
     setAuthLoading(true);
 
     const trimmedEmail = authEmail.trim().toLowerCase();
@@ -420,12 +453,14 @@ export default function App() {
     resetEditor();
     setCurrentTab('entries');
     setAuthMode('login');
-    setAuthError('');
+    setAuthError(!isSupabaseConfigured ? supabaseConfigError || '' : '');
     setAuthNotice('');
     window.history.replaceState(null, '', window.location.pathname);
 
     try {
-      await supabase.auth.signOut();
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
     } catch {
       // Session already cleared locally
     }
@@ -433,7 +468,7 @@ export default function App() {
 
   async function handleSaveJournal(e: React.FormEvent) {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !supabase) return;
     if (!formTitle.trim() || !formContent.trim()) {
       setFeedback({ type: 'error', text: 'Please provide both a title and entry content.' });
       return;
@@ -491,7 +526,7 @@ export default function App() {
   }
 
   async function confirmDeleteJournal() {
-    if (!user || !deleteTarget) return;
+    if (!user || !deleteTarget || !supabase) return;
     setDeleting(true);
     try {
       const { error } = await supabase
@@ -554,9 +589,10 @@ export default function App() {
         handleSessionExpired();
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'AI prompt generation failed.');
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      const data = isJson ? await res.json().catch(() => ({})) : {};
+      if (!res.ok || !isJson || typeof data.prompt !== 'string') {
+        throw new Error(data.error || 'AI prompts require the backend server (/api) to be running.');
       }
       setFormContent((prev) => (prev ? `${prev}\n\nPrompt: ${data.prompt}\n` : `Prompt: ${data.prompt}\n\n`));
       if (!formTitle) setFormTitle('Reflection Prompt');
@@ -584,9 +620,10 @@ export default function App() {
         handleSessionExpired();
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'AI suggestion failed.');
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      const data = isJson ? await res.json().catch(() => ({})) : {};
+      if (!res.ok || !isJson || (!data.title && !Array.isArray(data.tags))) {
+        throw new Error(data.error || 'AI suggestions require the backend server (/api) to be running.');
       }
       if (data.title) setFormTitle(data.title);
       if (Array.isArray(data.tags)) setFormTagsInput(data.tags.join(', '));
@@ -626,9 +663,10 @@ export default function App() {
         handleSessionExpired();
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to generate AI reflection.');
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      const data = isJson ? await res.json().catch(() => ({})) : {};
+      if (!res.ok || !isJson || typeof data.reflection !== 'string') {
+        throw new Error(data.error || 'AI reflections require the backend server (/api) to be running.');
       }
       setAiReflection(data.reflection);
       reflectionSignatureRef.current = journalsSignature;
