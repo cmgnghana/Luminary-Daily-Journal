@@ -1,0 +1,6 @@
+{
+  "name": "Luminary Daily Journal",
+  "description": "A secure, AI-powered daily journal and mindfulness sanctuary with secure authentication, rich entries, mood tracking, and intelligent reflections.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

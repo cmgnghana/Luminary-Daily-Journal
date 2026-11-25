@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAF8F5" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121417" />
+    <title>Luminary — Secure Daily Journal & AI Reflections</title>
+    <meta name="description" content="A secure, AI-powered daily journal and mindfulness sanctuary with authentication, rich entries, mood tracking, and intelligent reflections." />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta property="og:site_name" content="Luminary Daily Journal" />
+    <meta property="og:title" content="Luminary — Secure Daily Journal & AI Reflections" />
+    <meta property="og:description" content="A secure, AI-powered daily journal and mindfulness sanctuary with authentication, rich entries, mood tracking, and intelligent reflections." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Luminary — Secure Daily Journal & AI Reflections" />
+    <meta name="twitter:description" content="A secure, AI-powered daily journal and mindfulness sanctuary with authentication, rich entries, mood tracking, and intelligent reflections." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('luminary_theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (saved === 'dark' || (!saved && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
